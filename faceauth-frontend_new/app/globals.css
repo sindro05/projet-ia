@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #12211E;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(185, 134, 47, 0.10), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(124, 154, 130, 0.06), transparent);
+  min-height: 100vh;
+}
+
+*:focus-visible {
+  outline: 2px solid #D9AE64;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Corner-bracket reticle used around the photo viewfinder */
+.reticle {
+  position: relative;
+}
+.reticle::before,
+.reticle::after,
+.reticle .rt-tr,
+.reticle .rt-bl {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-color: #D9AE64;
+  border-style: solid;
+  border-width: 0;
+}
+.reticle::before {
+  top: -1px;
+  left: -1px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+.reticle::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+}
+.reticle .rt-tr {
+  top: -1px;
+  right: -1px;
+  border-top-width: 2px;
+  border-right-width: 2px;
+}
+.reticle .rt-bl {
+  bottom: -1px;
+  left: -1px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
+}
