@@ -6,4 +6,5 @@ opencv-python
 numpy
 pillow
 python-dotenv
-
+dlib
+face_recognition
