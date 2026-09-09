@@ -228,7 +228,7 @@ export default function WeatherPage() {
         setSourceError(message);
         setLoadingSource(false);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 }
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 300000 }
     );
   };
 
