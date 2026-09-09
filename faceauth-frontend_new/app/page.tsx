@@ -3,17 +3,6 @@ import Link from "next/link";
 export default function HomePage() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
-      {/* =========================
-          BACKGROUND
-      ========================= */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-sky-500/20 blur-3xl" />
-
-        <div className="absolute right-[-180px] top-1/4 h-[500px] w-[500px] rounded-full bg-violet-500/20 blur-3xl" />
-
-        <div className="absolute bottom-[-200px] left-1/3 h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-3xl" />
-      </div>
-
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-6 sm:px-8 lg:px-10">
         {/* =========================
             NAVBAR
@@ -105,8 +94,6 @@ export default function HomePage() {
               href="/register"
               className="group relative overflow-hidden rounded-3xl border border-sky-400/20 bg-gradient-to-br from-sky-500/10 to-blue-600/10 p-6 text-left shadow-xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-sky-400/40 hover:shadow-sky-500/10"
             >
-              <div className="absolute right-[-30px] top-[-30px] h-32 w-32 rounded-full bg-sky-500/10 blur-2xl transition group-hover:bg-sky-500/20" />
-
               <div className="relative">
                 <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 text-2xl shadow-lg shadow-sky-500/20">
                   ✨
@@ -136,8 +123,6 @@ export default function HomePage() {
               href="/login"
               className="group relative overflow-hidden rounded-3xl border border-violet-400/20 bg-gradient-to-br from-violet-500/10 to-purple-600/10 p-6 text-left shadow-xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-violet-400/40 hover:shadow-violet-500/10"
             >
-              <div className="absolute right-[-30px] top-[-30px] h-32 w-32 rounded-full bg-violet-500/10 blur-2xl transition group-hover:bg-violet-500/20" />
-
               <div className="relative">
                 <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-400 to-purple-600 text-2xl shadow-lg shadow-violet-500/20">
                   🔓

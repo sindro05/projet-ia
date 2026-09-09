@@ -35,13 +35,6 @@ export default function UserPage() {
       {/* =========================
           BACKGROUND
       ========================= */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-40 -top-40 h-[450px] w-[450px] rounded-full bg-sky-500/20 blur-3xl" />
-
-        <div className="absolute right-[-150px] top-1/4 h-[450px] w-[450px] rounded-full bg-violet-500/20 blur-3xl" />
-
-        <div className="absolute bottom-[-200px] left-1/3 h-[450px] w-[450px] rounded-full bg-cyan-500/10 blur-3xl" />
-      </div>
 
       <div className="relative mx-auto min-h-screen max-w-5xl px-5 py-6 sm:px-8 lg:px-10">
         {/* =========================
