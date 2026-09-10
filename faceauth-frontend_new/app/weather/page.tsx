@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import StatusMessage from "@/components/StatusMessage";
 import {
@@ -50,17 +50,23 @@ const MADAGASCAR_REGIONS = [
   { name: "Menabe (Morondava)", lat: -20.2833, lon: 44.3167 },
   { name: "Atsimo-Andrefana (Toliara)", lat: -23.35, lon: 43.6667 },
   { name: "Androy (Ambovombe)", lat: -25.1667, lon: 46.0833 },
-  { name: "Anosy (Taolagnaro / Fort-Dauphin)", lat: -25.0333, lon: 46.9833 },
+  {
+    name: "Anosy (Taolagnaro / Fort-Dauphin)",
+    lat: -25.0333,
+    lon: 46.9833,
+  },
   { name: "Ihorombe (Ihosy)", lat: -22.4, lon: 46.1167 },
 ];
 
 function getDayOfYear(): number {
   const now = new Date();
   const start = new Date(now.getFullYear(), 0, 0);
+
   const diff =
     now.getTime() -
     start.getTime() +
     (start.getTimezoneOffset() - now.getTimezoneOffset()) * 60 * 1000;
+
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
@@ -103,9 +109,58 @@ async function fetchCurrentWeather(
 
 /*
  * -------------------------------------------------------
- * PETIT CHEVRON ANIMÉ POUR LES SECTIONS REPLIABLES
+ * NORMALISATION DE TEXTE
  * -------------------------------------------------------
  */
+
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findRegionFromSpeech(spoken: string): string | null {
+  const normalizedSpoken = normalize(spoken);
+
+  if (!normalizedSpoken) return null;
+
+  let bestMatch: string | null = null;
+  let bestScore = 0;
+
+  for (const region of MADAGASCAR_REGIONS) {
+    const normalizedRegion = normalize(region.name);
+
+    const words = normalizedRegion
+      .split(" ")
+      .filter((w) => w.length > 2);
+
+    let score = 0;
+
+    for (const word of words) {
+      if (normalizedSpoken.includes(word)) {
+        score += word.length;
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = region.name;
+    }
+  }
+
+  return bestScore > 0 ? bestMatch : null;
+}
+
+/*
+ * -------------------------------------------------------
+ * PETIT CHEVRON ANIMÉ
+ * -------------------------------------------------------
+ */
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -117,17 +172,24 @@ function Chevron({ open }: { open: boolean }) {
       stroke="currentColor"
       strokeWidth={2}
     >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M19 9l-7 7-7-7"
+      />
     </svg>
   );
 }
 
 export default function WeatherPage() {
   const [mode, setMode] = useState<"gps" | "region" | null>(null);
+
   const [loadingSource, setLoadingSource] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
+
   const [fetchedWeather, setFetchedWeather] =
     useState<FetchedWeather | null>(null);
+
   const [selectedRegion, setSelectedRegion] = useState<string>("");
 
   const [tempDayOfYear, setTempDayOfYear] = useState(getDayOfYear());
@@ -135,11 +197,14 @@ export default function WeatherPage() {
   const [tempPressure, setTempPressure] = useState(900);
   const [tempWindSpeed, setTempWindSpeed] = useState(0);
   const [tempCloudCover, setTempCloudCover] = useState(100);
+
   const [showTempInputs, setShowTempInputs] = useState(false);
 
   const [loadingTemperature, setLoadingTemperature] = useState(false);
+
   const [temperatureResult, setTemperatureResult] =
     useState<TemperatureResult | null>(null);
+
   const [temperatureError, setTemperatureError] = useState<string | null>(
     null
   );
@@ -149,11 +214,159 @@ export default function WeatherPage() {
   const [rainWindSpeed, setRainWindSpeed] = useState(0);
   const [rainCloudCover, setRainCloudCover] = useState(100);
   const [rainToday, setRainToday] = useState(true);
+
   const [showRainInputs, setShowRainInputs] = useState(false);
 
   const [loadingRain, setLoadingRain] = useState(false);
   const [rainResult, setRainResult] = useState<RainResult | null>(null);
   const [rainError, setRainError] = useState<string | null>(null);
+
+  /*
+   * -------------------------------------------------
+   * 🎤 RECHERCHE VOCALE DE RÉGION
+   * -------------------------------------------------
+   */
+
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  const recognitionRef = useRef<any>(null);
+
+  /*
+   * -------------------------------------------------
+   * 🔊 LECTURE VOCALE DU BULLETIN
+   * -------------------------------------------------
+   */
+
+  const [ttsSupported, setTtsSupported] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      setVoiceSupported(true);
+
+      const recognition = new SpeechRecognition();
+
+      recognition.lang = "fr-FR";
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognitionRef.current = recognition;
+    }
+
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      setTtsSupported(true);
+    }
+  }, []);
+
+  const handleVoiceSearch = () => {
+    const recognition = recognitionRef.current;
+
+    if (!recognition) return;
+
+    setVoiceError(null);
+    setIsListening(true);
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript as string;
+
+      const matchedRegion = findRegionFromSpeech(transcript);
+
+      if (matchedRegion) {
+        handleSelectRegion(matchedRegion);
+      } else {
+        setVoiceError(
+          `Région non reconnue pour "${transcript}". Essayez de répéter le nom d'une ville ou région malgache.`
+        );
+      }
+    };
+
+    recognition.onerror = () => {
+      setVoiceError(
+        "La reconnaissance vocale a échoué. Vérifiez l'accès au micro et réessayez."
+      );
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    try {
+      recognition.start();
+    } catch {
+      setIsListening(false);
+      setVoiceError("Impossible de démarrer l'écoute. Réessayez.");
+    }
+  };
+
+  /*
+   * -------------------------------------------------
+   * 🔊 BULLETIN MÉTÉO
+   * -------------------------------------------------
+   */
+
+  const speakWeatherReport = () => {
+    if (!ttsSupported || !fetchedWeather) return;
+
+    window.speechSynthesis.cancel();
+
+    let text = `Météo pour ${fetchedWeather.location}. `;
+
+    text += `Température actuelle : ${fetchedWeather.temperature.toFixed(
+      0
+    )} degrés. `;
+
+    text += `Humidité : ${fetchedWeather.humidity.toFixed(0)} pourcent. `;
+
+    text += `Vent : ${fetchedWeather.wind_speed.toFixed(
+      0
+    )} kilomètres heure. `;
+
+    text += fetchedWeather.rain_today
+      ? "Il pleut actuellement. "
+      : "Pas de pluie actuellement. ";
+
+    if (temperatureResult) {
+      text += `Température prévue demain : ${temperatureResult.predicted_temperature.toFixed(
+        0
+      )} degrés. `;
+    }
+
+    if (rainResult) {
+      text += rainResult.rain_tomorrow
+        ? `Pluie prévue demain, avec une probabilité de ${(
+            rainResult.probability * 100
+          ).toFixed(0)} pourcent.`
+        : "Pas de pluie prévue demain.";
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    utterance.lang = "fr-FR";
+    utterance.rate = 1;
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  };
+
+  /*
+   * -------------------------------------------------
+   * APPLIQUER LA MÉTÉO RÉCUPÉRÉE
+   * -------------------------------------------------
+   */
 
   const applyFetchedWeather = (weather: FetchedWeather) => {
     setFetchedWeather(weather);
@@ -172,9 +385,16 @@ export default function WeatherPage() {
 
     setTemperatureResult(null);
     setRainResult(null);
+
     setTemperatureError(null);
     setRainError(null);
   };
+
+  /*
+   * -------------------------------------------------
+   * GPS
+   * -------------------------------------------------
+   */
 
   const handleUseGps = () => {
     setMode("gps");
@@ -194,11 +414,13 @@ export default function WeatherPage() {
       async (position) => {
         try {
           const { latitude, longitude } = position.coords;
+
           const weather = await fetchCurrentWeather(
             latitude,
             longitude,
             "Ma position (GPS)"
           );
+
           applyFetchedWeather(weather);
         } catch (err) {
           setSourceError(
@@ -217,9 +439,11 @@ export default function WeatherPage() {
           case geoError.PERMISSION_DENIED:
             message = "Vous avez refusé l'accès à votre position.";
             break;
+
           case geoError.POSITION_UNAVAILABLE:
             message = "Votre position est actuellement indisponible.";
             break;
+
           case geoError.TIMEOUT:
             message = "La récupération de votre position a expiré.";
             break;
@@ -228,21 +452,34 @@ export default function WeatherPage() {
         setSourceError(message);
         setLoadingSource(false);
       },
-      { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 }
+      {
+        enableHighAccuracy: false,
+        timeout: 30000,
+        maximumAge: 300000,
+      }
     );
   };
+
+  /*
+   * -------------------------------------------------
+   * SÉLECTION RÉGION
+   * -------------------------------------------------
+   */
 
   const handleSelectRegion = async (regionName: string) => {
     setSelectedRegion(regionName);
     setMode("region");
     setSourceError(null);
+    setVoiceError(null);
 
     if (!regionName) {
       setFetchedWeather(null);
       return;
     }
 
-    const region = MADAGASCAR_REGIONS.find((r) => r.name === regionName);
+    const region = MADAGASCAR_REGIONS.find(
+      (r) => r.name === regionName
+    );
 
     if (!region) {
       return;
@@ -256,6 +493,7 @@ export default function WeatherPage() {
         region.lon,
         region.name
       );
+
       applyFetchedWeather(weather);
     } catch (err) {
       setSourceError(
@@ -267,6 +505,12 @@ export default function WeatherPage() {
       setLoadingSource(false);
     }
   };
+
+  /*
+   * -------------------------------------------------
+   * PRÉDICTION TEMPÉRATURE
+   * -------------------------------------------------
+   */
 
   const handleTemperaturePrediction = async () => {
     setTemperatureError(null);
@@ -298,6 +542,12 @@ export default function WeatherPage() {
     }
   };
 
+  /*
+   * -------------------------------------------------
+   * PRÉDICTION PLUIE
+   * -------------------------------------------------
+   */
+
   const handleRainPrediction = async () => {
     setRainError(null);
     setRainResult(null);
@@ -319,7 +569,9 @@ export default function WeatherPage() {
       if (err instanceof WeatherApiError) {
         setRainError(err.message);
       } else {
-        setRainError("Impossible d'effectuer la prédiction de pluie.");
+        setRainError(
+          "Impossible d'effectuer la prédiction de pluie."
+        );
       }
     } finally {
       setLoadingRain(false);
@@ -328,14 +580,22 @@ export default function WeatherPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
+      {/* =================================================
+          NAVBAR
+      ================================================= */}
+
       <nav className="relative z-10 border-b border-white/10 bg-slate-950/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-lg shadow-lg shadow-cyan-500/20">
               🌦️
             </div>
+
             <div>
-              <p className="font-bold tracking-tight">Weather AI</p>
+              <p className="font-bold tracking-tight">
+                Weather AI
+              </p>
+
               <p className="text-xs text-slate-400">
                 Prévisions intelligentes
               </p>
@@ -353,7 +613,15 @@ export default function WeatherPage() {
         </div>
       </nav>
 
+      {/* =================================================
+          CONTENU PRINCIPAL
+      ================================================= */}
+
       <section className="relative z-10 mx-auto max-w-6xl px-6 py-12">
+        {/* =================================================
+            HEADER
+        ================================================= */}
+
         <div className="mx-auto max-w-3xl text-center">
           <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border border-cyan-400/20 bg-gradient-to-br from-cyan-400/20 to-blue-600/20 text-4xl shadow-2xl shadow-cyan-500/10">
             🤖
@@ -366,6 +634,7 @@ export default function WeatherPage() {
 
           <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">
             Prévision météo
+
             <span className="block bg-gradient-to-r from-cyan-300 via-blue-400 to-blue-500 bg-clip-text text-transparent">
               intelligente
             </span>
@@ -373,19 +642,23 @@ export default function WeatherPage() {
 
           <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-400 sm:text-base">
             Récupérez automatiquement les conditions météo actuelles par
-            votre position GPS ou en choisissant une région de Madagascar.
+            votre position GPS, une région de Madagascar, ou en dictant le
+            nom d'une ville au micro.
           </p>
         </div>
 
-        {/* -------------------------------------------------
-            SOURCE DE DONNÉES : GPS OU RÉGION
-        -------------------------------------------------- */}
+        {/* =================================================
+            SOURCE DES DONNÉES
+        ================================================= */}
+
         <div className="mx-auto mt-10 max-w-3xl rounded-3xl border border-white/10 bg-white/[0.04] p-7 shadow-2xl backdrop-blur-xl">
           <h2 className="text-lg font-semibold">
             Source des données météo
           </h2>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            {/* GPS */}
+
             <button
               type="button"
               onClick={handleUseGps}
@@ -406,10 +679,14 @@ export default function WeatherPage() {
               )}
             </button>
 
+            {/* RÉGION */}
+
             <div>
               <select
                 value={selectedRegion}
-                onChange={(e) => handleSelectRegion(e.target.value)}
+                onChange={(e) =>
+                  handleSelectRegion(e.target.value)
+                }
                 disabled={loadingSource}
                 className={`w-full rounded-xl border px-4 py-3 font-medium outline-none transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   mode === "region"
@@ -417,9 +694,13 @@ export default function WeatherPage() {
                     : "border-white/10 bg-white/5 text-slate-200"
                 }`}
               >
-                <option value="" className="bg-slate-900">
+                <option
+                  value=""
+                  className="bg-slate-900"
+                >
                   🗺️ Choisir une région de Madagascar
                 </option>
+
                 {MADAGASCAR_REGIONS.map((region) => (
                   <option
                     key={region.name}
@@ -433,39 +714,63 @@ export default function WeatherPage() {
             </div>
           </div>
 
+          {/* ERREUR SOURCE */}
+
           {sourceError && (
             <div className="mt-4">
-              <StatusMessage kind="error" message={sourceError} />
+              <StatusMessage
+                kind="error"
+                message={sourceError}
+              />
             </div>
           )}
 
+          {/* MÉTÉO ACTUELLE */}
+
           {fetchedWeather && !sourceError && (
             <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-5">
-              <p className="text-sm text-cyan-300">
-                📍 {fetchedWeather.location}
-              </p>
+              <div>
+                <p className="text-sm text-cyan-300">
+                  📍 {fetchedWeather.location}
+                </p>
+              </div>
 
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <div>
-                  <p className="text-slate-400">Humidité</p>
+                  <p className="text-slate-400">
+                    Humidité
+                  </p>
+
                   <p className="font-semibold">
                     {fetchedWeather.humidity.toFixed(0)}%
                   </p>
                 </div>
+
                 <div>
-                  <p className="text-slate-400">Pression</p>
+                  <p className="text-slate-400">
+                    Pression
+                  </p>
+
                   <p className="font-semibold">
                     {fetchedWeather.pressure.toFixed(0)} hPa
                   </p>
                 </div>
+
                 <div>
-                  <p className="text-slate-400">Vent</p>
+                  <p className="text-slate-400">
+                    Vent
+                  </p>
+
                   <p className="font-semibold">
                     {fetchedWeather.wind_speed.toFixed(1)} km/h
                   </p>
                 </div>
+
                 <div>
-                  <p className="text-slate-400">Nuages</p>
+                  <p className="text-slate-400">
+                    Nuages
+                  </p>
+
                   <p className="font-semibold">
                     {fetchedWeather.cloud_cover.toFixed(0)}%
                   </p>
@@ -473,39 +778,56 @@ export default function WeatherPage() {
               </div>
 
               <p className="mt-3 text-xs text-slate-500">
-                Les champs de saisie ont été remplis automatiquement. Déroulez
-                "Ajuster manuellement" dans chaque carte si vous voulez les
-                modifier.
+                Les champs de saisie ont été remplis automatiquement.
+                Déroulez "Ajuster manuellement" dans chaque carte si
+                vous voulez les modifier.
               </p>
             </div>
           )}
         </div>
 
+        {/* =================================================
+            LES DEUX BLOCS DE PRÉDICTION
+        ================================================= */}
+
         <div className="mx-auto mt-8 grid max-w-6xl gap-8 md:grid-cols-2">
           {/* =================================================
               TEMPÉRATURE
           ================================================= */}
+
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-7 shadow-2xl backdrop-blur-xl">
-            <div className="text-4xl">🌡️</div>
+            <div className="text-4xl">
+              🌡️
+            </div>
+
             <h2 className="mt-4 text-2xl font-bold">
               Température demain
             </h2>
 
+            {/* ERREUR */}
+
             {temperatureError && (
               <div className="mt-4">
-                <StatusMessage kind="error" message={temperatureError} />
+                <StatusMessage
+                  kind="error"
+                  message={temperatureError}
+                />
               </div>
             )}
 
-            {/* -------------------------------------------------
-                BOUTON REPLIABLE : "Ajuster manuellement"
-            -------------------------------------------------- */}
+            {/* PARAMÈTRES */}
+
             <button
               type="button"
-              onClick={() => setShowTempInputs((v) => !v)}
+              onClick={() =>
+                setShowTempInputs((v) => !v)
+              }
               className="mt-6 flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10"
             >
-              <span>⚙️ Ajuster manuellement les paramètres</span>
+              <span>
+                ⚙️ Ajuster manuellement les paramètres
+              </span>
+
               <Chevron open={showTempInputs} />
             </button>
 
@@ -518,71 +840,96 @@ export default function WeatherPage() {
             >
               <div className="overflow-hidden">
                 <div className="grid gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  {/* JOUR */}
+
                   <div>
                     <label className="block text-sm text-slate-400">
                       Jour de l'année (1-365)
                     </label>
+
                     <input
                       type="number"
                       value={tempDayOfYear}
                       onChange={(e) =>
-                        setTempDayOfYear(Number(e.target.value))
+                        setTempDayOfYear(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
                   </div>
+
+                  {/* HUMIDITÉ */}
 
                   <div>
                     <label className="block text-sm text-slate-400">
                       Humidité (%)
                     </label>
+
                     <input
                       type="number"
                       value={tempHumidity}
                       onChange={(e) =>
-                        setTempHumidity(Number(e.target.value))
+                        setTempHumidity(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
                   </div>
+
+                  {/* PRESSION */}
 
                   <div>
                     <label className="block text-sm text-slate-400">
                       Pression (hPa)
                     </label>
+
                     <input
                       type="number"
                       value={tempPressure}
                       onChange={(e) =>
-                        setTempPressure(Number(e.target.value))
+                        setTempPressure(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
                   </div>
+
+                  {/* VENT */}
 
                   <div>
                     <label className="block text-sm text-slate-400">
                       Vitesse du vent (km/h)
                     </label>
+
                     <input
                       type="number"
                       value={tempWindSpeed}
                       onChange={(e) =>
-                        setTempWindSpeed(Number(e.target.value))
+                        setTempWindSpeed(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
                   </div>
 
+                  {/* NUAGES */}
+
                   <div>
                     <label className="block text-sm text-slate-400">
                       Couverture nuageuse (%)
                     </label>
+
                     <input
                       type="number"
                       value={tempCloudCover}
                       onChange={(e) =>
-                        setTempCloudCover(Number(e.target.value))
+                        setTempCloudCover(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
@@ -590,6 +937,8 @@ export default function WeatherPage() {
                 </div>
               </div>
             </div>
+
+            {/* BOUTON PRÉDICTION */}
 
             <button
               type="button"
@@ -607,12 +956,15 @@ export default function WeatherPage() {
               )}
             </button>
 
+            {/* RÉSULTAT */}
+
             {(fetchedWeather || temperatureResult) && (
               <div className="mt-6 grid grid-cols-2 gap-4">
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
                   <p className="text-xs uppercase tracking-wide text-slate-400">
                     Aujourd'hui
                   </p>
+
                   <p className="mt-2 text-3xl font-bold text-slate-200">
                     {fetchedWeather
                       ? `${fetchedWeather.temperature.toFixed(1)}°C`
@@ -624,9 +976,12 @@ export default function WeatherPage() {
                   <p className="text-xs uppercase tracking-wide text-blue-300">
                     Demain (prédit)
                   </p>
+
                   <p className="mt-2 text-3xl font-extrabold">
                     {temperatureResult
-                      ? `${temperatureResult.predicted_temperature.toFixed(1)}°C`
+                      ? `${temperatureResult.predicted_temperature.toFixed(
+                          1
+                        )}°C`
                       : "—"}
                   </p>
                 </div>
@@ -637,22 +992,40 @@ export default function WeatherPage() {
           {/* =================================================
               PLUIE
           ================================================= */}
+
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-7 shadow-2xl backdrop-blur-xl">
-            <div className="text-4xl">🌧️</div>
-            <h2 className="mt-4 text-2xl font-bold">Pluie demain</h2>
+            <div className="text-4xl">
+              🌧️
+            </div>
+
+            <h2 className="mt-4 text-2xl font-bold">
+              Pluie demain
+            </h2>
+
+            {/* ERREUR */}
 
             {rainError && (
               <div className="mt-4">
-                <StatusMessage kind="error" message={rainError} />
+                <StatusMessage
+                  kind="error"
+                  message={rainError}
+                />
               </div>
             )}
 
+            {/* PARAMÈTRES */}
+
             <button
               type="button"
-              onClick={() => setShowRainInputs((v) => !v)}
+              onClick={() =>
+                setShowRainInputs((v) => !v)
+              }
               className="mt-6 flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10"
             >
-              <span>⚙️ Ajuster manuellement les paramètres</span>
+              <span>
+                ⚙️ Ajuster manuellement les paramètres
+              </span>
+
               <Chevron open={showRainInputs} />
             </button>
 
@@ -665,69 +1038,94 @@ export default function WeatherPage() {
             >
               <div className="overflow-hidden">
                 <div className="grid gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  {/* HUMIDITÉ */}
+
                   <div>
                     <label className="block text-sm text-slate-400">
                       Humidité (%)
                     </label>
+
                     <input
                       type="number"
                       value={rainHumidity}
                       onChange={(e) =>
-                        setRainHumidity(Number(e.target.value))
+                        setRainHumidity(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
                   </div>
+
+                  {/* PRESSION */}
 
                   <div>
                     <label className="block text-sm text-slate-400">
                       Pression (hPa)
                     </label>
+
                     <input
                       type="number"
                       value={rainPressure}
                       onChange={(e) =>
-                        setRainPressure(Number(e.target.value))
+                        setRainPressure(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
                   </div>
+
+                  {/* VENT */}
 
                   <div>
                     <label className="block text-sm text-slate-400">
                       Vitesse du vent (km/h)
                     </label>
+
                     <input
                       type="number"
                       value={rainWindSpeed}
                       onChange={(e) =>
-                        setRainWindSpeed(Number(e.target.value))
+                        setRainWindSpeed(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
                   </div>
+
+                  {/* NUAGES */}
 
                   <div>
                     <label className="block text-sm text-slate-400">
                       Couverture nuageuse (%)
                     </label>
+
                     <input
                       type="number"
                       value={rainCloudCover}
                       onChange={(e) =>
-                        setRainCloudCover(Number(e.target.value))
+                        setRainCloudCover(
+                          Number(e.target.value)
+                        )
                       }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 outline-none focus:border-blue-400"
                     />
                   </div>
 
+                  {/* PLUIE AUJOURD'HUI */}
+
                   <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
                       checked={rainToday}
-                      onChange={(e) => setRainToday(e.target.checked)}
+                      onChange={(e) =>
+                        setRainToday(e.target.checked)
+                      }
                       className="h-5 w-5 rounded border-white/10 bg-white/5"
                     />
+
                     <label className="text-sm text-slate-400">
                       Pluie aujourd'hui
                     </label>
@@ -735,6 +1133,8 @@ export default function WeatherPage() {
                 </div>
               </div>
             </div>
+
+            {/* BOUTON PRÉDICTION */}
 
             <button
               type="button"
@@ -752,24 +1152,67 @@ export default function WeatherPage() {
               )}
             </button>
 
+            {/* RÉSULTAT */}
+
             {rainResult && (
               <div className="mt-6 rounded-2xl border border-blue-400/20 bg-blue-400/10 p-6 text-center">
                 <p className="text-sm text-blue-300">
                   Résultat de la prédiction
                 </p>
+
                 <p className="mt-2 text-3xl font-extrabold">
                   {rainResult.rain_tomorrow
                     ? "🌧️ Pluie prévue"
                     : "☀️ Pas de pluie"}
                 </p>
+
                 <p className="mt-2 text-sm text-slate-400">
-                  Probabilité : {(rainResult.probability * 100).toFixed(1)}%
+                  Probabilité :{" "}
+                  {(rainResult.probability * 100).toFixed(1)}%
                 </p>
               </div>
             )}
           </div>
         </div>
+
+        {/* =================================================
+            🔊 BOUTON BULLETIN — TOUT EN BAS
+        ================================================= */}
+
+        {fetchedWeather &&
+          !sourceError &&
+          ttsSupported && (
+            <div className="mx-auto mt-8 flex max-w-6xl justify-center pb-4">
+              <button
+                type="button"
+                onClick={
+                  isSpeaking
+                    ? stopSpeaking
+                    : speakWeatherReport
+                }
+                className={`group flex items-center justify-center gap-3 rounded-2xl border px-8 py-4 font-semibold shadow-lg transition ${
+                  isSpeaking
+                    ? "border-red-400/30 bg-red-400/10 text-red-300 shadow-red-500/10 hover:bg-red-400/20"
+                    : "border-cyan-400/30 bg-cyan-400/10 text-cyan-300 shadow-cyan-500/10 hover:bg-cyan-400/20"
+                }`}
+              >
+                <span className="text-xl transition-transform group-hover:scale-110">
+                  {isSpeaking ? "⏹️" : "🔊"}
+                </span>
+
+                <span>
+                  {isSpeaking
+                    ? "Arrêter le bulletin"
+                    : "Écouter le bulletin"}
+                </span>
+              </button>
+            </div>
+          )}
       </section>
+
+      {/* =================================================
+          FOOTER
+      ================================================= */}
 
       <footer className="relative z-10 border-t border-white/10 px-6 py-8">
         <div className="mx-auto max-w-7xl text-center text-sm text-slate-500">
